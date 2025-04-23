@@ -155,15 +155,31 @@ python3 trainYolov11s.py --data $(pwd)/data_merged/data.yaml --epochs 100 --batc
 ### 4. Evaluación
 
 ```bash
-# Evaluar modelo entrenado
-python3 evaluateModel.py --model runs/detect/train/weights/best.pt
+# Evaluar modelo con un dataset específico (recomendado)
+python3 evaluateModel.py --model runs/detect/train/weights/best.pt --data data_merged/data.yaml
+
+# Evaluar usando solo el directorio del dataset
+python3 evaluateModel.py --model best.pt --data data_merged
+
+# El script buscará automáticamente data.yaml en directorios tipo "data*":
+# - data_merged/
+# - data_ready/
+# - cardd_ready/
+# - data_combined/
+# - data_cardd/
+# - data/
 
 # Listar todos los modelos disponibles
 python3 evaluateModel.py --list-models
 
-# Continuar entrenamiento
-python3 evaluateModel.py --model runs/detect/train/weights/best.pt --continue-epochs 20
+# Continuar entrenamiento especificando el dataset
+python3 evaluateModel.py --model runs/detect/train/weights/best.pt --data data_merged/data.yaml --continue-epochs 20
+
+# Mostrar más muestras de visualización
+python3 evaluateModel.py --model best.pt --data data_merged --samples 20
 ```
+
+> **IMPORTANTE**: Para obtener resultados precisos en la evaluación, asegúrate de especificar el mismo dataset que usaste para el entrenamiento o uno compatible. Usar un dataset incorrecto puede llevar a evaluaciones imprecisas.
 
 ### 5. Flujo de trabajo completo
 

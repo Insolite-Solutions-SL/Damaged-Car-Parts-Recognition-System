@@ -89,16 +89,38 @@ def get_data_path(data_arg):
         str: Ruta completa al archivo data.yaml
     """
     # Si es ruta completa, comprobar que existe
-    if os.path.exists(data_arg):
+    if data_arg and os.path.exists(data_arg):
+        if os.path.isdir(data_arg):
+            # Si es un directorio, buscar data.yaml dentro
+            yaml_path = os.path.join(data_arg, 'data.yaml')
+            if os.path.exists(yaml_path):
+                return yaml_path
+            else:
+                print(f"⚠️ No se encontró data.yaml en el directorio {data_arg}")
+        else:
+            # Si es un archivo, devolverlo directamente
+            return data_arg
+    
+    # Buscar dinámicamente directorios que comiencen con "data" y verificar si tienen data.yaml
+    import glob
+    data_dirs = glob.glob('data*/')  # Busca cualquier directorio que comience con "data"
+    
+    for data_dir in data_dirs:
+        yaml_path = os.path.join(data_dir, 'data.yaml')
+        if os.path.exists(yaml_path):
+            print(f"Utilizando archivo de datos: {yaml_path}")
+            return yaml_path
+    
+    # Si no se encuentra en ninguna ubicación
+    print("⚠️ ADVERTENCIA: No se pudo encontrar un archivo data.yaml válido.")
+    print("Por favor, especifique explícitamente la ruta con --data")
+    
+    # Si se proporcionó un argumento, devolverlo aunque no exista
+    if data_arg:
         return data_arg
     
-    # Buscar en el directorio data/ por defecto
-    default_data = 'data/data.yaml'
-    if os.path.exists(default_data):
-        return default_data
-    
-    # Si no se encuentra, retornar el argumento original
-    return data_arg
+    # Último recurso
+    return 'data/data.yaml'
 
 def list_available_models(base_dir='runs/detect'):
     """
@@ -176,9 +198,30 @@ def generate_visualizations(model_path, data_path, num_samples=10, device='0'):
     """
     print(f"=== Generando visualizaciones de predicciones para {num_samples} imágenes ===")
     
-    # Cargar archivo data.yaml para obtener la ruta a las imágenes de prueba
-    with open(data_path, 'r') as f:
-        data_config = yaml.safe_load(f)
+    if not os.path.exists(model_path):
+        print(f"Error: No se encuentra el modelo {model_path}")
+        return
+    
+    if not os.path.exists(data_path):
+        print(f"Error: No se encuentra el archivo de datos {data_path}")
+        return
+    
+    # Si data_path es un directorio, intentar encontrar data.yaml
+    if os.path.isdir(data_path):
+        yaml_file = os.path.join(data_path, 'data.yaml')
+        if os.path.exists(yaml_file):
+            data_path = yaml_file
+        else:
+            print(f"Error: No se encuentra data.yaml en {data_path}")
+            return
+    
+    # Cargar configuración del dataset
+    try:
+        with open(data_path, 'r') as f:
+            data_config = yaml.safe_load(f)
+    except Exception as e:
+        print(f"Error al cargar el archivo {data_path}: {e}")
+        return
     
     # Construir ruta completa al directorio de imágenes de prueba
     base_dir = os.path.dirname(data_path)
@@ -412,7 +455,7 @@ def main():
     """Función principal que procesa los argumentos y ejecuta la evaluación."""
     parser = argparse.ArgumentParser(description='Evaluar y analizar modelos YOLOv11 para detección de partes dañadas')
     parser.add_argument('--model', type=str, help='Ruta al modelo a evaluar')
-    parser.add_argument('--data', type=str, help='Ruta al archivo data.yaml')
+    parser.add_argument('--data', type=str, help='Ruta al archivo data.yaml o directorio que lo contiene')
     parser.add_argument('--batch', type=int, default=16, help='Tamaño del batch')
     parser.add_argument('--imgsz', type=int, default=640, help='Tamaño de la imagen')
     parser.add_argument('--device', type=str, default='0', help='Dispositivo (0, 0,1, cpu)')
@@ -429,11 +472,15 @@ def main():
     
     # Obtener rutas de modelo y datos
     model_path = get_model_path(args.model) if args.model else None
-    data_path = get_data_path(args.data) if args.data else 'data/data.yaml'
+    data_path = get_data_path(args.data)
     
     # Verificar archivo de datos
     if not os.path.exists(data_path):
         print(f"Error: No se encuentra el archivo de datos {data_path}")
+        print("Directorios comunes donde podría encontrarse:")
+        for dir_name in ['data_merged', 'data_ready', 'cardd_ready', 'data_combined', 'data_cardd', 'data']:
+            if os.path.exists(dir_name):
+                print(f" - {dir_name}")
         return
     
     # Si no se especificó un modelo, buscar el más reciente
