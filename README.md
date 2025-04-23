@@ -29,11 +29,13 @@ El sistema detecta 8 tipos de daños en vehículos:
 ```
 Damaged-Car-Parts-Recognition-System/
 ├── combineDatasets.py        # Combinar múltiples datasets
-├── convertCarDD.py           # Convertir dataset CarDD a formato YOLO
+├── configs/                  # Directorio de archivos de configuración
+│   └── extended_mapping.yaml # Mapeo extenso de clases para todos los datasets
+├── datasetProcessorTool.py   # Herramienta avanzada para procesamiento de datasets
 ├── damageDetectionWorkflow.py # Flujo de trabajo unificado
 ├── prepareLocalData.py       # Preparar estructura de datos local
 ├── trainYolov11s.py          # Entrenar modelos YOLOv11
-├── evaluateModel.py          # Evaluar y analizar modelos
+├── evaluateModel.py          # Evaluar modelos entrenados
 ├── best.pt                   # Modelo de referencia entrenado (PyTorch)
 ├── data/                     # Datos de entrenamiento originales
 ├── data_cardd/               # Datos convertidos de CarDD
@@ -84,23 +86,60 @@ python3 prepareLocalData.py --import-from data --data-dir data_sample --sample-s
 
 > **Nota**: `prepareLocalData.py` ahora soporta automáticamente cualquier sufijo en los nombres de directorios (train2017, train2023, etc.). No es necesario modificar nada para diferentes años o versiones.
 
-### 2. Conversión avanzada con `convertCarDD.py`
+### 2. Procesamiento avanzado de datasets con `datasetProcessorTool.py`
 
-Este script realiza una conversión más especializada para datasets COCO, especialmente útil cuando necesitas mapeo personalizado de categorías:
+Esta herramienta avanzada proporciona múltiples funcionalidades para la preparación y procesamiento de datasets:
 
 ```bash
-# Convertir dataset CarDD a formato YOLO
-python3 convertCarDD.py --coco-dir CarDD_COCO --output-dir data_cardd_custom
+# Convertir un dataset COCO a formato YOLO con mapeo personalizado de clases
+python datasetProcessorTool.py --coco-dir dataset_original --output-dir dataset_procesado --config configs/extended_mapping.yaml
 
-# Usar mapeo personalizado de clases
-python3 convertCarDD.py --coco-dir CarDD_COCO --output-dir data_cardd_custom --custom-mapping
+# Convertir y fusionar múltiples datasets
+python datasetProcessorTool.py --coco-dirs dataset1 dataset2 dataset3 --output-dir datasets_combinados --merge
+
+# Procesar y remapear un dataset existente en formato YOLO
+python datasetProcessorTool.py --yolo-dir dataset_yolo_existente --output-dir dataset_remapeado --use-remapping --config configs/extended_mapping.yaml
 ```
 
-> **Nota**: `convertCarDD.py` también ha sido actualizado para soportar cualquier sufijo en nombres de directorios, no solo "2017".
+#### Características principales:
 
-**¿Cuál script usar?**
-- Usa `prepareLocalData.py` para la mayoría de casos (estructura simple, sin mapeo de clases)
-- Usa `convertCarDD.py` cuando necesites mapeo personalizado de clases o conversión específica para CarDD
+- **Conversión flexible**: Maneja múltiples estructuras de datasets COCO, adaptándose automáticamente.
+- **Mapeo de clases**: Unifica diferentes nomenclaturas de etiquetas bajo un esquema consistente.
+- **Fusión de datasets**: Combina varios datasets en uno solo con distribuciones personalizables.
+- **Remapeo de clases**: Aplica transformaciones de clases incluso a datasets ya en formato YOLO.
+- **Estadísticas detalladas**: Proporciona información completa del proceso realizado.
+
+#### Archivos de configuración incluidos:
+
+El sistema incluye dos archivos de configuración predefinidos:
+
+- **`configs/extended_mapping.yaml`**: Mapeo extenso para datasets con múltiples variantes de clases
+
+Ejemplo de uso con dataset con múltiples clases:
+
+```bash
+# Remapear un dataset con muchas clases a las 8 clases estándar
+python datasetProcessorTool.py --yolo-dir data_con_muchas_clases --output-dir data_estandarizado --use-remapping --config configs/extended_mapping.yaml
+```
+
+#### Casos de uso recomendados:
+
+- Combinar datasets de diferentes fuentes con nomenclaturas distintas
+- Preparar datasets específicos para cada tipo de daño en vehículos
+- Redistribuir imágenes entre splits (train/valid/test) manteniendo balance de clases
+- Normalizar esquemas de etiquetado para entrenamiento consistente
+
+#### Opciones avanzadas:
+
+```bash
+# Incluir clases adicionales no definidas en el mapeo por defecto
+python datasetProcessorTool.py --coco-dir dataset_original --output-dir dataset_procesado --allow-new-classes
+
+# Personalizar ratios de splits para la fusión
+python datasetProcessorTool.py --coco-dirs dataset1 dataset2 --output-dir resultado --merge --split-ratios 0.8,0.1,0.1
+```
+
+> **Nota**: Esta herramienta reemplaza al script anterior `convertCarDD.py` con funcionalidades mucho más extensas y flexibles.
 
 ### 3. Combinación de datasets
 

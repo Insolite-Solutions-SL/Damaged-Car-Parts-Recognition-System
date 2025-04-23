@@ -1,0 +1,72 @@
+target_classes:
+  - damaged door
+  - damaged window
+  - damaged headlight
+  - damaged mirror
+  - dent
+  - damaged hood
+  - damaged bumper
+  - damaged wind shield
+
+class_mapping:
+  # Mapeo estándar
+  breakage: damaged bumper
+  bumper_damage: damaged bumper
+  collapse: damaged door
+  crack: damaged window
+  damage: dent
+  dent: dent
+  depression: dent
+  door_damage: damaged door
+  hood_damage: damaged hood
+  light_damage: damaged headlight
+  mirror_damage: damaged mirror
+  part_off: damaged bumper
+  scratch: dent
+  window_damage: damaged window
+  windshield_damage: damaged wind shield
+  
+  # Mapeos específicos para dataset extendido
+  Bodypanel-Dent: dent
+  Front-Windscreen-Damage: damaged wind shield
+  Headlight-Damage: damaged headlight
+  Rear-windscreen-Damage: damaged wind shield
+  RunningBoard-Dent: dent
+  Sidemirror-Damage: damaged mirror
+  Signlight-Damage: damaged headlight
+  Taillight-Damage: damaged headlight
+  back-bumper: damaged bumper
+  back-glass: damaged window
+  bonnet-dent: dent
+  boot-dent: dent
+  broken_lamp: damaged headlight
+  damaged-door: damaged door
+  damaged-front-bumper: damaged bumper
+  damaged-head-light: damaged headlight
+  damaged-hood: damaged hood
+  damaged-rear-bumper: damaged bumper
+  damaged-rear-window: damaged window
+  damaged-tail-light: damaged headlight
+  damaged-trunk: damaged hood
+  damaged-window: damaged window
+  damaged-windscreen: damaged wind shield
+  dent-or-scratch: dent
+  door: damaged door
+  doorouter-dent: dent
+  fender-dent: dent
+  flat_tire: damaged bumper
+  front-bumper: damaged bumper
+  front-bumper-dent: damaged bumper
+  front-glass: damaged window
+  headlight: damaged headlight
+  hood: damaged hood
+  mirror: damaged mirror
+  pillar-dent: dent
+  quaterpanel-dent: dent
+  rear-bumper-dent: damaged bumper
+  roof-dent: dent
+  shattered_glass: damaged window
+  taillight: damaged headlight
+  trunk: damaged hood
+  wheel: damaged bumper
+  window: damaged window
