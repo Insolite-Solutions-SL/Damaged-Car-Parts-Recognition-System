@@ -727,145 +727,170 @@ def merge_datasets(input_dirs, output_dir, class_mapping, target_classes, split_
         'total_images': 0,
         'total_annotations': 0,
         'class_counts': defaultdict(int),
-        'splits': defaultdict(lambda: {'images': 0, 'annotations': 0})
+        'splits': {'train': 0, 'valid': 0, 'test': 0}
     }
+    
+    print("Iniciando la fusión de datasets...")
     
     # Recopilar todas las imágenes y etiquetas
     all_image_paths = []
-    all_label_paths = []
     
-    for input_dir in input_dirs:
+    for source_dir in input_dirs:
+        print(f"Procesando dataset: {source_dir}")
+        
         # Cargar clases originales si están disponibles
-        orig_target_classes = []
-        yaml_file = os.path.join(input_dir, 'data.yaml')
+        orig_classes = []
+        yaml_file = os.path.join(source_dir, 'data.yaml')
         if os.path.exists(yaml_file):
             try:
                 with open(yaml_file, 'r') as f:
                     yaml_data = yaml.safe_load(f)
                     if 'names' in yaml_data:
-                        orig_target_classes = yaml_data['names']
-            except:
-                pass
+                        orig_classes = yaml_data['names']
+                        print(f"  - Clases cargadas: {orig_classes}")
+            except Exception as e:
+                print(f"  - Error al cargar {yaml_file}: {e}")
         
+        # Buscar imágenes en el directorio
         for split in ['train', 'valid', 'test']:
-            image_dir = os.path.join(input_dir, split, 'images')
-            label_dir = os.path.join(input_dir, split, 'labels')
+            split_img_dir = os.path.join(source_dir, split, 'images')
+            split_lbl_dir = os.path.join(source_dir, split, 'labels')
             
-            if not os.path.exists(image_dir) or not os.path.exists(label_dir):
+            if not os.path.exists(split_img_dir) or not os.path.isdir(split_img_dir):
                 continue
+                
+            img_count = 0
+            for img_file in os.listdir(split_img_dir):
+                if img_file.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
+                    img_path = os.path.join(split_img_dir, img_file)
+                    label_file = os.path.splitext(img_file)[0] + '.txt'
+                    label_path = os.path.join(split_lbl_dir, label_file)
+                    
+                    if os.path.exists(label_path):
+                        all_image_paths.append((img_path, label_path, orig_classes))
+                        img_count += 1
             
-            # Encontrar todas las imágenes con etiquetas
-            for img_file in os.listdir(image_dir):
-                if not (img_file.endswith('.jpg') or img_file.endswith('.jpeg') or img_file.endswith('.png')):
-                    continue
-                
-                label_file = os.path.splitext(img_file)[0] + '.txt'
-                label_path = os.path.join(label_dir, label_file)
-                
-                if os.path.exists(label_path):
-                    all_image_paths.append((os.path.join(image_dir, img_file), orig_target_classes))
-                    all_label_paths.append(label_path)
+            print(f"  - Split {split}: {img_count} imágenes")
     
-    print(f"Encontradas {len(all_image_paths)} imágenes con etiquetas en total")
+    # Mezclar aleatoriamente las imágenes para tener una distribución equilibrada
+    random.shuffle(all_image_paths)
     
-    # Determinar la distribución de splits
+    # Si no se definen proporciones, usar los valores predeterminados
     if split_config is None:
         split_config = {'train': 0.7, 'valid': 0.2, 'test': 0.1}
     
-    # Calcular límites de índices para cada split
-    n_samples = len(all_image_paths)
-    train_idx = int(n_samples * split_config['train'])
-    valid_idx = train_idx + int(n_samples * split_config['valid'])
+    # Calcular división de los conjuntos
+    n_images = len(all_image_paths)
+    n_train = int(n_images * split_config['train'])
+    n_val = int(n_images * split_config['valid'])
+    # El resto va a test
     
-    # Distribuir las imágenes en splits
-    split_indices = {
-        'train': list(range(0, train_idx)),
-        'valid': list(range(train_idx, valid_idx)),
-        'test': list(range(valid_idx, n_samples))
-    }
+    print(f"\nTotal de imágenes encontradas: {n_images}")
+    print(f"Distribución: Train={n_train}, Valid={n_val}, Test={n_images - n_train - n_val}")
     
-    # Procesar las imágenes según la asignación de splits
-    for split, indices in split_indices.items():
-        print(f"Procesando split {split}: {len(indices)} imágenes")
+    # Asignar imágenes a los splits
+    splits = ['train'] * n_train + ['valid'] * n_val + ['test'] * (n_images - n_train - n_val)
+    assert len(splits) == n_images, "Error en la división de conjuntos"
+    
+    # Copiar imágenes y etiquetas a la estructura correspondiente
+    for i, (img_path, label_path, orig_classes) in enumerate(tqdm(all_image_paths, desc="Combinando datasets")):
+        split = splits[i]
+        img_file = os.path.basename(img_path)
+        label_file = os.path.basename(label_path)
         
-        for idx in tqdm(indices, desc=f"Copiando {split}"):
-            img_info = all_image_paths[idx]
-            img_path = img_info[0]
-            orig_classes = img_info[1]
-            label_path = all_label_paths[idx]
-            
-            # Copiar imagen
-            dst_img_path = os.path.join(output_dir, split, 'images', os.path.basename(img_path))
-            shutil.copy2(img_path, dst_img_path)
-            
-            # Leer y procesar etiquetas
-            annotations = []
+        # Destinos
+        img_dest = os.path.join(output_dir, split, 'images', img_file)
+        label_dest = os.path.join(output_dir, split, 'labels', label_file)
+        
+        # Copiar imagen
+        shutil.copy2(img_path, img_dest)
+        
+        # Procesar etiqueta
+        if use_remapping and class_mapping and orig_classes:
+            # Leer etiqueta original
             with open(label_path, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    parts = line.split()
-                    if len(parts) != 5:
-                        continue
-                    
+                lines = f.readlines()
+            
+            remapped_lines = []
+            for line in lines:
+                parts = line.strip().split()
+                if len(parts) >= 5:  # formato YOLO: class_id x_center y_center width height
                     try:
                         class_id = int(parts[0])
-                        # Obtener nombre original y mapear a clase objetivo
-                        if orig_classes and class_id < len(orig_classes):
+                        
+                        # Remapear clase si está dentro del rango de clases original
+                        if class_id < len(orig_classes):
                             class_name = orig_classes[class_id]
                             mapped_name = class_mapping.get(class_name, class_name)
                             
                             if mapped_name in target_classes:
                                 new_class_id = target_classes.index(mapped_name)
                                 parts[0] = str(new_class_id)
-                                annotations.append(' '.join(parts) + '\n')
+                                remapped_lines.append(' '.join(parts) + '\n')
                                 stats['class_counts'][mapped_name] += 1
+                                stats['total_annotations'] += 1
                             else:
                                 # Ignorar clases que no están en nuestro target
                                 continue
-                        
-                        # Si no tenemos nombres, copiar directamente
-                        annotations.append(line)
-                        stats['class_counts'][f"class_{class_id}"] += 1
+                        else:
+                            # Si está fuera del rango, mantener la clase tal cual
+                            remapped_lines.append(line)
+                            stats['class_counts'][f"class_{class_id}"] += 1
+                            stats['total_annotations'] += 1
                     
                     except ValueError:
                         continue
             
-            # Guardar anotaciones remapeadas
-            dst_label_path = os.path.join(output_dir, split, 'labels', os.path.splitext(os.path.basename(img_path))[0] + '.txt')
-            with open(dst_label_path, 'w') as f:
-                f.write('\n'.join(annotations))
+            # Guardar etiqueta remapeada
+            with open(label_dest, 'w') as f:
+                f.writelines(remapped_lines)
+        else:
+            # Copiar etiqueta sin remapear
+            shutil.copy2(label_path, label_dest)
             
-            stats['total_images'] += 1
+            # Contar clases aunque no remapeemos
+            with open(label_path, 'r') as f:
+                lines = f.readlines()
+            
+            for line in lines:
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    try:
+                        class_id = int(parts[0])
+                        class_name = f"class_{class_id}"
+                        if orig_classes and class_id < len(orig_classes):
+                            class_name = orig_classes[class_id]
+                        stats['class_counts'][class_name] += 1
+                        stats['total_annotations'] += 1
+                    except ValueError:
+                        continue
+        
+        stats['total_images'] += 1
+        stats['splits'][split] += 1
     
     # Crear archivo data.yaml
     yaml_content = {
         'train': './train/images',
         'val': './valid/images',
         'test': './test/images',
-        'nc': len(target_classes),
-        'names': target_classes
+        'nc': len(target_classes) if target_classes else len(set([k for k in stats['class_counts'].keys() if not k.startswith('class_')])),
+        'names': target_classes if target_classes else sorted([k for k in stats['class_counts'].keys() if not k.startswith('class_')])
     }
     
-    with open(os.path.join(output_dir, 'data.yaml'), 'w') as f:
+    yaml_path = os.path.join(output_dir, 'data.yaml')
+    with open(yaml_path, 'w') as f:
         yaml.dump(yaml_content, f, default_flow_style=False)
     
-    # Imprimir resumen
-    print("\nResumen de la fusión:")
-    print(f"Total de imágenes: {stats['total_images']}")
+    print("\nCombinación de datasets completada:")
+    print(f"- Train: {stats['splits']['train']} imágenes")
+    print(f"- Valid: {stats['splits']['valid']} imágenes") 
+    print(f"- Test: {stats['splits']['test']} imágenes")
+    print(f"Total: {stats['total_images']} imágenes")
     print(f"Total de anotaciones: {stats['total_annotations']}")
-    
-    print("\nDistribución por split:")
-    for split, split_stats in stats['splits'].items():
-        print(f"- {split}: {split_stats['images']} imágenes, {split_stats['annotations']} anotaciones")
     
     print("\nConteo de clases:")
     for cls, count in sorted(stats['class_counts'].items(), key=lambda x: x[1], reverse=True):
         print(f"- {cls}: {count}")
-    
-    print(f"\nDataset fusionado guardado en: {output_dir}")
     
     return stats
 
@@ -1177,19 +1202,19 @@ def prepare_standard_structure(input_dir, output_dir, class_mapping, target_clas
         # Mezclar aleatoriamente las imágenes
         random.shuffle(images_paths)
         
-        # Limitar por sample_size si es necesario
+        # Limitar número de imágenes si es necesario
         if sample_size > 0 and len(images_paths) > sample_size:
             images_paths = images_paths[:sample_size]
         
         # Procesar y copiar los archivos
         print("Copiando archivos...")
         for img_path, label_path, split in tqdm(images_paths, desc=f"Procesando", unit="archivos"):
-            img_filename = os.path.basename(img_path)
-            label_filename = os.path.basename(label_path)
+            img_file = os.path.basename(img_path)
+            label_file = os.path.basename(label_path)
             
             # Destinos
-            img_dest = os.path.join(output_dir, split, 'images', img_filename)
-            label_dest = os.path.join(output_dir, split, 'labels', label_filename)
+            img_dest = os.path.join(output_dir, split, 'images', img_file)
+            label_dest = os.path.join(output_dir, split, 'labels', label_file)
             
             # Copiar imagen
             shutil.copy2(img_path, img_dest)
@@ -1206,30 +1231,21 @@ def prepare_standard_structure(input_dir, output_dir, class_mapping, target_clas
                     if len(parts) >= 5:  # formato YOLO: class_id x_center y_center width height
                         try:
                             class_id = int(parts[0])
-                            # Si queremos remapear la clase
-                            if class_mapping:
-                                # Si tenemos información de clases en el dataset
-                                if structure_info.get('structure', {}).get('classes') and class_id < len(structure_info['structure']['classes']):
-                                    class_name = structure_info['structure']['classes'][class_id]
-                                    mapped_name = class_mapping.get(class_name, class_name)
-                                    
-                                    if mapped_name in target_classes:
-                                        new_class_id = target_classes.index(mapped_name)
-                                        parts[0] = str(new_class_id)
-                                        remapped_lines.append(' '.join(parts) + '\n')
-                                        class_counts[mapped_name] += 1
-                                    else:
-                                        # Ignorar clases que no están en nuestro target
-                                        continue
-                                else:
-                                    # No tenemos información de clases, mantener el ID y contar genéricamente
-                                    mapped_name = f"class_{class_id}"
-                                    if class_id < len(target_classes):
-                                        mapped_name = target_classes[class_id]
+                            # Si tenemos información de clases en el dataset
+                            if structure_info.get('structure', {}).get('classes') and class_id < len(structure_info['structure']['classes']):
+                                class_name = structure_info['structure']['classes'][class_id]
+                                mapped_name = class_mapping.get(class_name, class_name)
+                                
+                                if mapped_name in target_classes:
+                                    new_class_id = target_classes.index(mapped_name)
+                                    parts[0] = str(new_class_id)
+                                    remapped_lines.append(' '.join(parts) + '\n')
                                     class_counts[mapped_name] += 1
-                                    remapped_lines.append(line)
+                                else:
+                                    # Ignorar clases que no están en nuestro target
+                                    continue
                             else:
-                                # Si no queremos remapear, mantener la clase original y contar
+                                # No tenemos información de clases, mantener el ID y contar genéricamente
                                 mapped_name = f"class_{class_id}"
                                 if class_id < len(target_classes):
                                     mapped_name = target_classes[class_id]
@@ -1547,136 +1563,136 @@ def main():
     parser = argparse.ArgumentParser(description="Dataset Processor Tool - Conversión y procesamiento avanzado de datasets")
     
     # Argumentos básicos
-    parser.add_argument('--input-dir', type=str, required=True, help='Directorio de entrada con el dataset original')
+    parser.add_argument('--input-dir', type=str, help='Directorio de entrada con el dataset original')
     parser.add_argument('--output-dir', type=str, required=True, help='Directorio de salida para guardar el dataset procesado')
     parser.add_argument('--config', type=str, default=DEFAULT_CONFIG_PATH, help='Archivo de configuración YAML con el mapeo de clases')
     
     # Opciones de procesamiento
-    parser.add_argument('--input-format', type=str, choices=['auto', 'coco', 'yolo', 'raw'], default='auto', 
-                        help='Formato del dataset de entrada (auto=detección automática)')
+    parser.add_argument('--input-format', type=str, choices=['auto', 'coco', 'yolo', 'raw'], default='auto', help='Formato del dataset de entrada')
     parser.add_argument('--use-remapping', action='store_true', help='Aplicar remapeo de clases según el archivo de configuración')
-    parser.add_argument('--allow-new-classes', action='store_true', help='Permitir clases nuevas no definidas en el mapeo')
+    parser.add_argument('--allow-new-classes', action='store_true', help='Permitir clases nuevas no definidas en las clases objetivo')
     parser.add_argument('--include-empty', action='store_true', help='Incluir imágenes sin anotaciones')
     parser.add_argument('--sample-size', type=int, default=0, help='Número de imágenes a incluir por split (0=todas)')
     
+    # Opciones para fusión de datasets (nueva funcionalidad)
+    parser.add_argument('--merge-datasets', action='store_true', help='Fusionar múltiples datasets en uno solo')
+    parser.add_argument('--input-dirs', nargs='+', help='Lista de directorios con datasets a combinar (para fusión)')
+    parser.add_argument('--train-ratio', type=float, default=0.7, help='Proporción de imágenes para entrenamiento (para fusión)')
+    parser.add_argument('--val-ratio', type=float, default=0.2, help='Proporción de imágenes para validación (para fusión)')
+    parser.add_argument('--test-ratio', type=float, default=0.1, help='Proporción de imágenes para prueba (para fusión)')
+    
     args = parser.parse_args()
     
-    # Crear directorios de salida si no existen
-    os.makedirs(args.output_dir, exist_ok=True)
-    
     # Cargar configuración de mapeo de clases
+    class_mapping, target_classes = load_mapping_config(args.config)
+    
     if args.use_remapping:
-        class_mapping, target_classes = load_mapping_config(args.config)
-        print("Mapeo de clases cargado desde:", args.config)
-        print("Clases objetivo:", target_classes)
-    else:
-        class_mapping, target_classes = None, None
+        print(f"Mapeo de clases cargado desde: {args.config}")
+        print(f"Clases objetivo: {target_classes}")
     
-    # Detectar automáticamente el formato del dataset si es 'auto'
-    if args.input_format == 'auto':
-        structure_info = detect_dataset_structure(args.input_dir)
-        format_type = structure_info['type']
-        print(f"Formato de dataset detectado: {format_type}")
-    else:
-        format_type = args.input_format
-    
-    # Procesar según el formato
-    if format_type == 'coco':
-        # Convertir de COCO a YOLO con remapeo integrado
-        stats = convert_coco_to_yolo(
-            args.input_dir, 
-            args.output_dir, 
-            class_mapping if args.use_remapping else None,
-            target_classes if args.use_remapping else None,
-            args.sample_size
-        )
-        
-    elif format_type == 'raw':
-        # Preparar dataset con estructura no estándar
-        stats = prepare_standard_structure(
-            args.input_dir,
-            args.output_dir,
-            class_mapping if args.use_remapping else None,
-            target_classes if args.use_remapping else None,
-            args.sample_size
-        )
-        
-    elif format_type == 'yolo':
-        # Si es YOLO con estructura estándar, solo aplicar remapeo
-        data_yaml_path = os.path.join(args.input_dir, 'data.yaml')
-        
-        # Cargar clases actuales del dataset
-        current_classes = []
-        if os.path.exists(data_yaml_path):
-            try:
-                with open(data_yaml_path, 'r') as f:
-                    data_yaml = yaml.safe_load(f)
-                    if 'names' in data_yaml:
-                        current_classes = data_yaml['names']
-            except Exception as e:
-                print(f"Error al cargar data.yaml: {e}")
-                current_classes = [f"class_{i}" for i in range(100)]  # Fallback
-        
-        # Verificar que tenemos clases objetivo 
-        if args.use_remapping and not target_classes:
-            print("Error: Se solicitó remapeo pero no se pudieron cargar las clases objetivo")
+    # Procesar según el modo seleccionado
+    if args.merge_datasets:
+        # Modo de fusión de datasets
+        if not args.input_dirs or len(args.input_dirs) < 2:
+            print("Error: Para fusionar datasets, debe especificar --input-dirs con al menos dos directorios a combinar.")
             return
         
-        # Si no queremos remapear, mantener las clases originales
-        if not args.use_remapping:
-            target_classes = current_classes
+        # Verificar que las proporciones sumen 1
+        total_ratio = args.train_ratio + args.val_ratio + args.test_ratio
+        if abs(total_ratio - 1.0) > 0.001:
+            print(f"Error: Las proporciones deben sumar 1.0, pero suman {total_ratio}")
+            print(f"Train: {args.train_ratio}, Validación: {args.val_ratio}, Test: {args.test_ratio}")
+            return
         
-        # Procesamiento por splits
-        total_images = 0
-        total_annotations = 0
-        class_counts = Counter()
+        # Verificar que todos los directorios de entrada existan
+        for input_dir in args.input_dirs:
+            if not os.path.exists(input_dir):
+                print(f"Error: El directorio {input_dir} no existe.")
+                return
         
-        # Procesar cada split (train, valid, test)
-        for split in ['train', 'valid', 'test']:
-            stats = process_yolo_dataset(
+        print(f"Iniciando fusión de {len(args.input_dirs)} datasets...")
+        for i, input_dir in enumerate(args.input_dirs):
+            print(f"Dataset {i+1}: {input_dir}")
+        
+        # Configuración de splits
+        split_config = {
+            'train': args.train_ratio,
+            'valid': args.val_ratio,
+            'test': args.test_ratio
+        }
+        
+        # Fusionar datasets
+        stats = merge_datasets(
+            args.input_dirs, 
+            args.output_dir, 
+            class_mapping, 
+            target_classes, 
+            split_config, 
+            args.use_remapping
+        )
+        
+        print(f"\n✅ Datasets fusionados correctamente!")
+        print(f"Dataset de salida: {args.output_dir}")
+        print(f"Archivo de configuración: {args.output_dir}/data.yaml")
+    else:
+        # Modo de procesamiento de dataset individual
+        if not args.input_dir:
+            print("Error: Para procesar un dataset individual, debe especificar --input-dir.")
+            return
+        
+        if not os.path.exists(args.input_dir):
+            print(f"Error: El directorio {args.input_dir} no existe.")
+            return
+        
+        # Detectar automáticamente el formato del dataset si es 'auto'
+        if args.input_format == 'auto':
+            structure_info = detect_dataset_structure(args.input_dir)
+            format_type = structure_info['type']
+            print(f"Formato de dataset detectado: {format_type}")
+        else:
+            format_type = args.input_format
+            structure_info = {'type': format_type}
+        
+        # Procesar según el formato
+        if format_type == 'coco':
+            # Convertir de COCO a YOLO con remapeo integrado
+            stats = convert_coco_to_yolo(
                 args.input_dir, 
                 args.output_dir, 
-                split, 
-                current_classes, 
-                class_mapping if args.use_remapping else None, 
-                target_classes, 
-                args.allow_new_classes, 
+                class_mapping if args.use_remapping else None,
+                target_classes if args.use_remapping else None,
+                args.sample_size
+            )
+            
+        elif format_type == 'raw':
+            # Preparar dataset con estructura no estándar
+            stats = prepare_standard_structure(
+                args.input_dir,
+                args.output_dir,
+                structure_info,
+                class_mapping if args.use_remapping else None,
+                target_classes if args.use_remapping else None,
                 args.include_empty,
                 args.sample_size
             )
             
-            if stats:
-                total_images += stats['total_images']
-                total_annotations += stats['total_annotations']
-                for cls, count in stats['class_counts'].items():
-                    class_counts[cls] += count
+        elif format_type == 'yolo':
+            # Procesar dataset YOLO (con posibilidad de remapear clases)
+            stats = process_yolo_dataset(
+                args.input_dir,
+                args.output_dir,
+                class_mapping if args.use_remapping else None,
+                target_classes if args.use_remapping else None,
+                args.include_empty,
+                args.sample_size
+            )
+        else:
+            print(f"Error: Formato de dataset no soportado: {format_type}")
+            return
         
-        # Crear archivo data.yaml en el directorio de salida
-        data_yaml = {
-            'train': './train/images',
-            'val': './valid/images',
-            'test': './test/images',
-            'nc': len(target_classes),
-            'names': target_classes
-        }
-        
-        with open(os.path.join(args.output_dir, 'data.yaml'), 'w') as f:
-            yaml.dump(data_yaml, f, default_flow_style=False)
-        
-        print(f"\nProcesamiento de dataset YOLO completado:")
-        print(f"Total de imágenes: {total_images}")
-        print(f"Total de anotaciones: {total_annotations}")
-        print(f"Conteo de clases:")
-        for cls, count in sorted(class_counts.items(), key=lambda x: x[1], reverse=True):
-            print(f"- {cls}: {count}")
-    
-    else:
-        print(f"⚠️ No se pudo determinar el formato del dataset o no es compatible")
-        return
-    
-    print("\n✅ Dataset procesado correctamente!")
-    print(f"Dataset de salida: {args.output_dir}")
-    print(f"Archivo de configuración: {args.output_dir}/data.yaml")
+        print(f"\n✅ Dataset procesado correctamente!")
+        print(f"Dataset de salida: {args.output_dir}")
+        print(f"Archivo de configuración: {args.output_dir}/data.yaml")
 
 if __name__ == "__main__":
     main()
