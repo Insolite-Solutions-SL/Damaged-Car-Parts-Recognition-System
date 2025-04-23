@@ -65,30 +65,9 @@ El sistema ahora soporta múltiples formatos de datos de entrada:
    - Estructura: `/images/`, `/labels/` sin subdirectorios
    - O imágenes y etiquetas en el mismo directorio
 
-## Flujo de trabajo para preparación de datos
+## Procesamiento avanzado de datasets
 
-Existen dos scripts principales para preparar los datos según tus necesidades:
-
-### 1. Preparación básica con `prepareLocalData.py`
-
-Este script detecta automáticamente la estructura de directorios y crea un formato YOLO estándar:
-
-```bash
-# Preparar dataset con estructura invertida (como /data)
-python3 prepareLocalData.py --import-from data --data-dir data_ready
-
-# Preparar dataset en formato COCO (como CarDD_COCO)
-python3 prepareLocalData.py --import-from CarDD_COCO --data-dir cardd_ready
-
-# Control del tamaño de muestra (0 = usar todo el dataset)
-python3 prepareLocalData.py --import-from data --data-dir data_sample --sample-size 100
-```
-
-> **Nota**: `prepareLocalData.py` ahora soporta automáticamente cualquier sufijo en los nombres de directorios (train2017, train2023, etc.). No es necesario modificar nada para diferentes años o versiones.
-
-### 2. Procesamiento avanzado de datasets con `datasetProcessorTool.py`
-
-Esta herramienta avanzada proporciona múltiples funcionalidades para la preparación y procesamiento de datasets:
+La herramienta `datasetProcessorTool.py` proporciona todas las funcionalidades necesarias para la preparación de datasets:
 
 ```bash
 # Convertir un dataset COCO a formato YOLO con mapeo personalizado de clases
@@ -107,27 +86,15 @@ python datasetProcessorTool.py --yolo-dir dataset_yolo_existente --output-dir da
 - **Mapeo de clases**: Unifica diferentes nomenclaturas de etiquetas bajo un esquema consistente.
 - **Fusión de datasets**: Combina varios datasets en uno solo con distribuciones personalizables.
 - **Remapeo de clases**: Aplica transformaciones de clases incluso a datasets ya en formato YOLO.
-- **Estadísticas detalladas**: Proporciona información completa del proceso realizado.
 
-#### Archivos de configuración incluidos:
+#### Configuración para el mapeo de clases:
 
-El sistema incluye dos archivos de configuración predefinidos:
-
-- **`configs/extended_mapping.yaml`**: Mapeo extenso para datasets con múltiples variantes de clases
-
-Ejemplo de uso con dataset con múltiples clases:
+La herramienta utiliza el archivo `configs/extended_mapping.yaml` que contiene el mapeo completo para unificar más de 50 variantes de etiquetas en las 8 clases estándar:
 
 ```bash
-# Remapear un dataset con muchas clases a las 8 clases estándar
+# Ejemplo: Remapear un dataset con múltiples clases a las 8 clases estándar
 python datasetProcessorTool.py --yolo-dir data_con_muchas_clases --output-dir data_estandarizado --use-remapping --config configs/extended_mapping.yaml
 ```
-
-#### Casos de uso recomendados:
-
-- Combinar datasets de diferentes fuentes con nomenclaturas distintas
-- Preparar datasets específicos para cada tipo de daño en vehículos
-- Redistribuir imágenes entre splits (train/valid/test) manteniendo balance de clases
-- Normalizar esquemas de etiquetado para entrenamiento consistente
 
 #### Opciones avanzadas:
 
@@ -139,146 +106,29 @@ python datasetProcessorTool.py --coco-dir dataset_original --output-dir dataset_
 python datasetProcessorTool.py --coco-dirs dataset1 dataset2 --output-dir resultado --merge --split-ratios 0.8,0.1,0.1
 ```
 
-> **Nota**: Esta herramienta reemplaza al script anterior `convertCarDD.py` con funcionalidades mucho más extensas y flexibles.
+## Guía rápida: Flujo completo de trabajo
 
-### 3. Combinación de datasets
+Este es el flujo de trabajo recomendado para utilizar el sistema completo:
 
-Una vez preparados los datasets individuales, puedes combinarlos:
+### 1. Preparación y procesamiento de datos
 
 ```bash
-# Combinar múltiples datasets
-python3 combineDatasets.py --sources data_ready cardd_ready --output data_merged
+# Preparar datos y convertir a formato YOLO con clases unificadas
+python datasetProcessorTool.py --coco-dir dataset_original --output-dir dataset_procesado --config configs/extended_mapping.yaml
 ```
 
-## Guía rápida de uso
-
-### 1. Preparación de datos
+### 2. Entrenamiento de modelos
 
 ```bash
-# Preparar estructura local mínima
-python3 prepareLocalData.py
-
-# Preparar dataset con estructura invertida (como /data)
-python3 prepareLocalData.py --import-from data --data-dir data_ready
-
-# Preparar dataset en formato COCO (como CarDD_COCO)
-python3 prepareLocalData.py --import-from CarDD_COCO --data-dir cardd_ready
-
-# Control del tamaño de muestra (0 = usar todo el dataset)
-python3 prepareLocalData.py --import-from data --data-dir data_sample --sample-size 100
+# Entrenar con parámetros básicos
+python trainYolov11s.py --data dataset_procesado/data.yaml --epochs 100 --batch 16 --device 0
 ```
 
-### 2. Combinación de datasets
+### 3. Evaluación y análisis
 
 ```bash
-# Combinar múltiples datasets
-python3 combineDatasets.py --sources data_ready cardd_ready --output data_merged
-
-# Combinar 3 o más datasets
-python3 combineDatasets.py --sources data_ready cardd_ready data_cardd --output data_mega
-```
-
-### 3. Entrenamiento
-
-```bash
-# Entrenar con dataset original
-python3 trainYolov11s.py --data $(pwd)/data_ready/data.yaml --epochs 100 --batch 16 --device 0
-
-# Entrenar con dataset CarDD convertido
-python3 trainYolov11s.py --data $(pwd)/cardd_ready/data.yaml --epochs 100 --batch 16 --device 0
-
-# Entrenar con dataset combinado (recomendado)
-python3 trainYolov11s.py --data $(pwd)/data_merged/data.yaml --epochs 100 --batch 16 --device 0
-```
-
-### 4. Evaluación
-
-```bash
-# Evaluación básica
-python3 evaluateModel.py --model runs/detect/train/weights/best.pt --data data_merged/data.yaml
-
-# Evaluación con visualizaciones adicionales
-python3 evaluateModel.py --model best.pt --data data_merged --samples 20
-
-# Listar todos los modelos disponibles
-python3 evaluateModel.py --list-models
-
-# Continuar entrenamiento por más épocas
-python3 evaluateModel.py --model runs/detect/train/weights/best.pt --data data_merged/data.yaml --continue-epochs 20
-
-#### Análisis Avanzados
-
-```bash
-# Generar informe completo con todas las métricas (recomendado)
-python3 evaluateModel.py --model best.pt --data data_merged --full-report
-
-# Análisis específico por clase de daño
-python3 evaluateModel.py --model best.pt --data data_merged --analyze-classes
-
-# Generar matriz de confusión
-python3 evaluateModel.py --model best.pt --data data_merged --confusion-matrix
-
-# Benchmark de velocidad (FPS, latencia)
-python3 evaluateModel.py --model best.pt --data data_merged --benchmark
-
-# Análisis de errores comunes (falsos positivos/negativos)
-python3 evaluateModel.py --model best.pt --data data_merged --analyze-errors
-
-# Comparar múltiples modelos
-python3 evaluateModel.py --compare-models best.pt runs/detect/train2/weights/best.pt runs/detect/train3/weights/best.pt --data data_merged
-
-# Exportar modelo a formato optimizado (ONNX, TorchScript, OpenVINO)
-python3 evaluateModel.py --model best.pt --data data_merged --export onnx --export-dir ./exported_models
-```
-
-> **IMPORTANTE**: Para obtener resultados precisos en la evaluación, asegúrate de especificar el mismo dataset que usaste para el entrenamiento o uno compatible. Usar un dataset incorrecto puede llevar a evaluaciones imprecisas.
-
-#### Tipos de Reportes Generados
-
-El evaluador de modelos genera varios tipos de reportes y visualizaciones:
-
-| Reporte | Descripción | Comando |
-|---------|-------------|---------|
-| Métricas Básicas | mAP, precisión, recall para validación y prueba | Cualquier evaluación básica |
-| Visualizaciones | Imágenes con predicciones y ground truth | `--samples N` |
-| Rendimiento por Clase | Gráficas detalladas por tipo de daño | `--analyze-classes` |
-| Matriz de Confusión | Análisis de confusiones entre clases | `--confusion-matrix` |
-| Benchmark | Medición de FPS y latencia | `--benchmark` |
-| Análisis de Errores | Ejemplos específicos de falsos positivos/negativos | `--analyze-errors` |
-| Comparativa | Gráficas comparativas entre modelos | `--compare-models` |
-| Informe Completo | Dashboard HTML con todas las métricas | `--full-report` |
-
-#### Integración con YOLO Detection
-
-Para integrar un modelo evaluado en el sistema principal YOLO Detection:
-
-1. Copie el modelo (`.pt`) a la carpeta `/models/` en la raíz del proyecto principal
-2. Actualice la configuración del modo 'Defects' para usar su modelo:
-   ```python
-   # En src/modes/defects/config.py
-   MODEL_WEIGHTS = "nombre_de_su_modelo.pt"  # El archivo en /models/
-   ```
-3. El sistema utilizará automáticamente `get_model_path()` para cargar su modelo
-
-#### Consejos para la Evaluación
-
-- Utilice `--full-report` para obtener un análisis completo en un solo paso
-- Verifique los falsos positivos más comunes para identificar áreas de mejora
-- Compare siempre el rendimiento entre validación y prueba para detectar overfitting
-- Para modelos destinados a dispositivos con recursos limitados, priorice el benchmark de velocidad
-- Los modelos con mAP50 > 0.85 son generalmente adecuados para implementación en producción
-
-### 5. Flujo de trabajo completo
-
-```bash
-# Ver todas las opciones
-python3 damageDetectionWorkflow.py --help
-
-# Ejecutar flujo completo (local, CPU)
-python3 damageDetectionWorkflow.py workflow --local --device cpu
-
-# Flujo completo con GPU
-python3 damageDetectionWorkflow.py workflow --sources data_ready cardd_ready --epochs 100 --device 0
+# Evaluar modelo entrenado
+python evaluateModel.py --model runs/detect/train/weights/best.pt --data dataset_procesado/data.yaml --full-report
 ```
 
 ## Estadísticas de conjuntos de datos
@@ -311,3 +161,23 @@ Si `prepareLocalData.py` muestra advertencias sobre no encontrar imágenes con e
 - Para datasets grandes, es recomendable usar una GPU para el entrenamiento
 - Para transferencia de aprendizaje rápida, use `--epochs 20 --patience 10`
 - Para detección de alta precisión, use `--epochs 100 --patience 25`
+
+## Integración con YOLO Detection
+
+Para integrar un modelo evaluado en el sistema principal YOLO Detection:
+
+1. Copie el modelo (`.pt`) a la carpeta `/models/` en la raíz del proyecto principal
+2. Actualice la configuración del modo 'Defects' para usar su modelo:
+   ```python
+   # En src/modes/defects/config.py
+   MODEL_WEIGHTS = "nombre_de_su_modelo.pt"  # El archivo en /models/
+   ```
+3. El sistema utilizará automáticamente `get_model_path()` para cargar su modelo
+
+## Consejos para la Evaluación
+
+- Utilice `--full-report` para obtener un análisis completo en un solo paso
+- Verifique los falsos positivos más comunes para identificar áreas de mejora
+- Compare siempre el rendimiento entre validación y prueba para detectar overfitting
+- Para modelos destinados a dispositivos con recursos limitados, priorice el benchmark de velocidad
+- Los modelos con mAP50 > 0.85 son generalmente adecuados para implementación en producción
