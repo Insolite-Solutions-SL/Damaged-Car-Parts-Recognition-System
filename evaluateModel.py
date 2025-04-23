@@ -122,6 +122,50 @@ def get_data_path(data_arg):
     # Último recurso
     return 'data/data.yaml'
 
+def get_absolute_data_yaml(data_path):
+    """
+    Crea una copia temporal del archivo data.yaml con rutas absolutas.
+    
+    Args:
+        data_path (str): Ruta al archivo data.yaml original
+        
+    Returns:
+        str: Ruta al archivo data.yaml temporal con rutas absolutas
+    """
+    if not os.path.exists(data_path):
+        return data_path
+    
+    try:
+        # Leer el archivo data.yaml
+        with open(data_path, 'r') as f:
+            data_config = yaml.safe_load(f)
+        
+        # Obtener el directorio base del archivo data.yaml
+        base_dir = os.path.dirname(os.path.abspath(data_path))
+        
+        # Convertir rutas relativas a absolutas
+        for key in ['train', 'val', 'test', 'valid']:
+            if key in data_config and data_config[key] and isinstance(data_config[key], str):
+                # Eliminar el "./" inicial si existe
+                path = data_config[key]
+                if path.startswith('./'):
+                    path = path[2:]
+                # Construir ruta absoluta
+                data_config[key] = os.path.abspath(os.path.join(base_dir, path))
+                print(f"Convertida ruta {key}: {data_config[key]}")
+        
+        # Crear un archivo temporal
+        temp_yaml = os.path.join(os.path.dirname(data_path), 'temp_absolute_data.yaml')
+        with open(temp_yaml, 'w') as f:
+            yaml.dump(data_config, f)
+        
+        print(f"Creado archivo temporal con rutas absolutas: {temp_yaml}")
+        return temp_yaml
+    
+    except Exception as e:
+        print(f"Error al procesar el archivo data.yaml: {e}")
+        return data_path
+
 def list_available_models(base_dir='runs/detect'):
     """
     Lista todos los modelos disponibles y sus métricas.
@@ -215,50 +259,68 @@ def generate_visualizations(model_path, data_path, num_samples=10, device='0'):
             print(f"Error: No se encuentra data.yaml en {data_path}")
             return
     
+    # Crear una versión del data.yaml con rutas absolutas
+    absolute_data_path = get_absolute_data_yaml(data_path)
+    
     # Cargar configuración del dataset
     try:
-        with open(data_path, 'r') as f:
+        with open(absolute_data_path, 'r') as f:
             data_config = yaml.safe_load(f)
     except Exception as e:
-        print(f"Error al cargar el archivo {data_path}: {e}")
+        print(f"Error al cargar el archivo {absolute_data_path}: {e}")
         return
     
     # Construir ruta completa al directorio de imágenes de prueba
-    base_dir = os.path.dirname(data_path)
+    base_dir = os.path.dirname(absolute_data_path)
     test_dir = data_config.get('test', './test/images')
     
     # Si la ruta es relativa, resolverla respecto al directorio de data.yaml
-    if not os.path.isabs(test_dir):
-        test_dir = os.path.join(base_dir, test_dir)
+    if test_dir.startswith('./'):
+        test_dir = test_dir[2:]
+    
+    # Construir ruta completa
+    test_images_dir = os.path.join(base_dir, test_dir)
+    if not os.path.exists(test_images_dir):
+        print(f"Error: No se encuentra el directorio de imágenes de prueba: {test_images_dir}")
+        return
     
     # Listar todas las imágenes de prueba
-    images = []
-    for ext in ['.jpg', '.jpeg', '.png', '.bmp']:
-        images.extend(glob.glob(os.path.join(test_dir, f'*{ext}')))
+    image_files = []
+    for ext in ['jpg', 'jpeg', 'png']:
+        image_files.extend(glob.glob(os.path.join(test_images_dir, f'*.{ext}')))
     
-    if not images:
-        print(f"Error: No se encontraron imágenes en {test_dir}")
+    if not image_files:
+        print(f"Error: No se encontraron imágenes en {test_images_dir}")
         return
     
     # Seleccionar muestras aleatorias
-    sample_images = random.sample(images, min(num_samples, len(images)))
+    if len(image_files) > num_samples:
+        image_files = random.sample(image_files, num_samples)
     
-    # Unir rutas de imágenes para el comando
-    img_paths = ','.join(sample_images)
+    # Crear directorio para las predicciones si no existe
+    model_name = os.path.splitext(os.path.basename(model_path))[0]
+    model_dir = os.path.dirname(model_path)
+    train_dir = os.path.dirname(model_dir)
+    train_name = os.path.basename(train_dir)
+    pred_dir = f"./predictions_{train_name}"
+    os.makedirs(pred_dir, exist_ok=True)
     
-    # Obtener nombre base del modelo para el directorio de salida
-    model_name = os.path.basename(os.path.dirname(os.path.dirname(model_path))) if 'weights' in model_path else 'model'
+    # Unir las rutas de imágenes en una sola cadena para YOLO
+    images_str = ','.join(image_files)  # Usar rutas absolutas
     
-    # Construir comando para predicciones
-    cmd = f"yolo task=detect mode=predict model={model_path} source={img_paths} imgsz=640 device={device} save=True save_txt=True save_conf=True project=./predictions_{model_name} name=samples"
-    
-    print(f"Ejecutando: {cmd}")
+    # Comando para generar predicciones
+    predict_command = f"yolo task=detect mode=predict model={model_path} source={images_str} " \
+                     f"imgsz={640} device={device} save=True save_txt=True save_conf=True " \
+                     f"project={pred_dir} name=samples"
+    print(f"Ejecutando: {predict_command}")
     
     try:
-        process = subprocess.run(cmd, shell=True, check=True)
-        print(f"\nVisualizaciones guardadas en: ./predictions_{model_name}/samples")
+        subprocess.run(predict_command, shell=True, check=True)
+        print(f"Visualizaciones guardadas en {pred_dir}/samples")
+        return f"{pred_dir}/samples"
     except subprocess.CalledProcessError as e:
         print(f"Error al generar visualizaciones: {e}")
+        return None
 
 def parse_metrics(results_dir):
     """
@@ -292,9 +354,63 @@ def parse_metrics(results_dir):
     
     return metrics
 
-def evaluate_model(model, data, batch=16, imgsz=640, device='0', split=None):
+def evaluate_model(model_path, data_path, batch_size=16, img_size=640, device='0', split=None):
     """
-    Evalúa un modelo en el conjunto de datos especificado.
+    Evalúa un modelo en conjuntos de validación y prueba.
+    
+    Args:
+        model_path (str): Ruta al modelo
+        data_path (str): Ruta al archivo data.yaml
+        batch_size (int): Tamaño del batch
+        img_size (int): Tamaño de la imagen
+        device (str): Dispositivo a utilizar
+        split (str): Conjunto a evaluar (None para validación, 'test' para prueba)
+    """
+    
+    if not os.path.exists(model_path):
+        print(f"Error: No se encuentra el modelo {model_path}")
+        return False
+    
+    if not os.path.exists(data_path):
+        print(f"Error: No se encuentra el archivo de datos {data_path}")
+        return False
+    
+    # Crear una versión del data.yaml con rutas absolutas
+    absolute_data_path = get_absolute_data_yaml(data_path)
+    
+    # Determinar conjunto y nombre
+    if split == 'test':
+        set_name = "PRUEBA"
+        command_split = "split=test name=test_results"
+    else:
+        set_name = "VALIDACIÓN"
+        command_split = ""
+    
+    print(f"=== Evaluando {os.path.basename(model_path)} en el conjunto de {set_name} ===")
+    val_command = f"yolo task=detect mode=val model={model_path} data={absolute_data_path} batch={batch_size} " \
+                 f"imgsz={img_size} device={device} save_json=True save_txt=True save_conf=True plots=True {command_split}"
+    print(f"Ejecutando: {val_command}")
+    
+    success = True
+    try:
+        subprocess.run(val_command, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error durante la evaluación: {e}")
+        success = False
+    
+    # Limpiar archivo temporal
+    if absolute_data_path != data_path and os.path.exists(absolute_data_path):
+        try:
+            os.remove(absolute_data_path)
+            print(f"Eliminado archivo temporal: {absolute_data_path}")
+        except:
+            pass
+    
+    return success
+
+def run_yolo_command(model, data, batch, imgsz, device, split="val", name=None, extra_args=None):
+    """
+    Ejecuta un comando YOLO y devuelve el resultado.
     
     Args:
         model (str): Ruta al modelo
@@ -302,41 +418,58 @@ def evaluate_model(model, data, batch=16, imgsz=640, device='0', split=None):
         batch (int): Tamaño del batch
         imgsz (int): Tamaño de la imagen
         device (str): Dispositivo a utilizar
-        split (str): Conjunto de datos a evaluar ('train', 'val', 'test')
+        split (str): Split a evaluar (val, test)
+        name (str): Nombre para los resultados
+        extra_args (list): Argumentos adicionales
         
     Returns:
         str: Directorio donde se guardaron los resultados
     """
+    # Crear una versión del data.yaml con rutas absolutas
+    absolute_data_path = get_absolute_data_yaml(data)
+    
     # Construir comando base
     cmd = ["yolo", "task=detect", "mode=val", 
-          f"model={model}", f"data={data}", 
+          f"model={model}", f"data={absolute_data_path}", 
           f"batch={batch}", f"imgsz={imgsz}", 
           f"device={device}", 
           "save_json=True", "save_txt=True", 
           "save_conf=True", "plots=True"]
     
-    # Añadir split y nombre si es necesario
-    if split:
+    # Agregar split si es diferente de val
+    if split != "val":
         cmd.append(f"split={split}")
-        cmd.append(f"name={split}_results")
     
-    # Ejecutar comando
+    # Agregar nombre si se proporciona
+    if name:
+        cmd.append(f"name={name}")
+    
+    # Agregar argumentos adicionales
+    if extra_args:
+        cmd.extend(extra_args)
+    
+    # Convertir a cadena
     cmd_str = " ".join(cmd)
     print(f"Ejecutando: {cmd_str}")
     
     try:
-        process = subprocess.run(cmd_str, shell=True, check=True)
+        result = subprocess.run(cmd_str, shell=True, check=True, capture_output=True, text=True)
+        output = result.stdout
         
-        # Determinar directorio de resultados
-        if split and split != 'val':
-            result_dir = f"runs/detect/{split}_results"
+        # Extraer directorio de resultados (puede variar según el modo)
+        runs_dir = "runs/detect"
+        if name:
+            result_dir = f"{runs_dir}/{name}"
         else:
-            result_dir = "runs/detect/val"
+            result_dir = f"{runs_dir}/val"
         
         return result_dir
+        
     except subprocess.CalledProcessError as e:
-        print(f"Error durante la evaluación: {e}")
-        return None
+        print(f"Error: {e}")
+        print(f"Salida: {e.stdout}")
+        print(f"Error: {e.stderr}")
+        raise e
 
 def continue_training(model, data, continue_epochs=20, batch=16, imgsz=640, device='0'):
     """
@@ -515,20 +648,20 @@ def main():
     # Evaluar en conjunto de validación
     print(f"\n=== Evaluando {os.path.basename(model_path)} en el conjunto de VALIDACIÓN ===")
     val_dir = evaluate_model(
-        model=model_path,
-        data=data_path,
-        batch=args.batch,
-        imgsz=args.imgsz,
+        model_path=model_path,
+        data_path=data_path,
+        batch_size=args.batch,
+        img_size=args.imgsz,
         device=args.device
     )
     
     # Evaluar en conjunto de prueba
     print(f"\n=== Evaluando {os.path.basename(model_path)} en el conjunto de PRUEBA ===")
     test_dir = evaluate_model(
-        model=model_path,
-        data=data_path,
-        batch=args.batch,
-        imgsz=args.imgsz,
+        model_path=model_path,
+        data_path=data_path,
+        batch_size=args.batch,
+        img_size=args.imgsz,
         device=args.device,
         split='test'
     )
