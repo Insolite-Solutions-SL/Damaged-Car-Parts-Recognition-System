@@ -63,6 +63,54 @@ El sistema ahora soporta múltiples formatos de datos de entrada:
    - Estructura: `/images/`, `/labels/` sin subdirectorios
    - O imágenes y etiquetas en el mismo directorio
 
+## Flujo de trabajo para preparación de datos
+
+Existen dos scripts principales para preparar los datos según tus necesidades:
+
+### 1. Preparación básica con `prepareLocalData.py`
+
+Este script detecta automáticamente la estructura de directorios y crea un formato YOLO estándar:
+
+```bash
+# Preparar dataset con estructura invertida (como /data)
+python3 prepareLocalData.py --import-from data --data-dir data_ready
+
+# Preparar dataset en formato COCO (como CarDD_COCO)
+python3 prepareLocalData.py --import-from CarDD_COCO --data-dir cardd_ready
+
+# Control del tamaño de muestra (0 = usar todo el dataset)
+python3 prepareLocalData.py --import-from data --data-dir data_sample --sample-size 100
+```
+
+> **Nota**: `prepareLocalData.py` ahora soporta automáticamente cualquier sufijo en los nombres de directorios (train2017, train2023, etc.). No es necesario modificar nada para diferentes años o versiones.
+
+### 2. Conversión avanzada con `convertCarDD.py`
+
+Este script realiza una conversión más especializada para datasets COCO, especialmente útil cuando necesitas mapeo personalizado de categorías:
+
+```bash
+# Convertir dataset CarDD a formato YOLO
+python3 convertCarDD.py --coco-dir CarDD_COCO --output-dir data_cardd_custom
+
+# Usar mapeo personalizado de clases
+python3 convertCarDD.py --coco-dir CarDD_COCO --output-dir data_cardd_custom --custom-mapping
+```
+
+> **Nota**: `convertCarDD.py` también ha sido actualizado para soportar cualquier sufijo en nombres de directorios, no solo "2017".
+
+**¿Cuál script usar?**
+- Usa `prepareLocalData.py` para la mayoría de casos (estructura simple, sin mapeo de clases)
+- Usa `convertCarDD.py` cuando necesites mapeo personalizado de clases o conversión específica para CarDD
+
+### 3. Combinación de datasets
+
+Una vez preparados los datasets individuales, puedes combinarlos:
+
+```bash
+# Combinar múltiples datasets
+python3 combineDatasets.py --sources data_ready cardd_ready --output data_merged
+```
+
 ## Guía rápida de uso
 
 ### 1. Preparación de datos
