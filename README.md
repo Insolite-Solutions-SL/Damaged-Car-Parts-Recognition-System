@@ -155,31 +155,79 @@ python3 trainYolov11s.py --data $(pwd)/data_merged/data.yaml --epochs 100 --batc
 ### 4. Evaluación
 
 ```bash
-# Evaluar modelo con un dataset específico (recomendado)
+# Evaluación básica
 python3 evaluateModel.py --model runs/detect/train/weights/best.pt --data data_merged/data.yaml
 
-# Evaluar usando solo el directorio del dataset
-python3 evaluateModel.py --model best.pt --data data_merged
-
-# El script buscará automáticamente data.yaml en directorios tipo "data*":
-# - data_merged/
-# - data_ready/
-# - cardd_ready/
-# - data_combined/
-# - data_cardd/
-# - data/
+# Evaluación con visualizaciones adicionales
+python3 evaluateModel.py --model best.pt --data data_merged --samples 20
 
 # Listar todos los modelos disponibles
 python3 evaluateModel.py --list-models
 
-# Continuar entrenamiento especificando el dataset
+# Continuar entrenamiento por más épocas
 python3 evaluateModel.py --model runs/detect/train/weights/best.pt --data data_merged/data.yaml --continue-epochs 20
 
-# Mostrar más muestras de visualización
-python3 evaluateModel.py --model best.pt --data data_merged --samples 20
+#### Análisis Avanzados
+
+```bash
+# Generar informe completo con todas las métricas (recomendado)
+python3 evaluateModel.py --model best.pt --data data_merged --full-report
+
+# Análisis específico por clase de daño
+python3 evaluateModel.py --model best.pt --data data_merged --analyze-classes
+
+# Generar matriz de confusión
+python3 evaluateModel.py --model best.pt --data data_merged --confusion-matrix
+
+# Benchmark de velocidad (FPS, latencia)
+python3 evaluateModel.py --model best.pt --data data_merged --benchmark
+
+# Análisis de errores comunes (falsos positivos/negativos)
+python3 evaluateModel.py --model best.pt --data data_merged --analyze-errors
+
+# Comparar múltiples modelos
+python3 evaluateModel.py --compare-models best.pt runs/detect/train2/weights/best.pt runs/detect/train3/weights/best.pt --data data_merged
+
+# Exportar modelo a formato optimizado (ONNX, TorchScript, OpenVINO)
+python3 evaluateModel.py --model best.pt --data data_merged --export onnx --export-dir ./exported_models
 ```
 
 > **IMPORTANTE**: Para obtener resultados precisos en la evaluación, asegúrate de especificar el mismo dataset que usaste para el entrenamiento o uno compatible. Usar un dataset incorrecto puede llevar a evaluaciones imprecisas.
+
+#### Tipos de Reportes Generados
+
+El evaluador de modelos genera varios tipos de reportes y visualizaciones:
+
+| Reporte | Descripción | Comando |
+|---------|-------------|---------|
+| Métricas Básicas | mAP, precisión, recall para validación y prueba | Cualquier evaluación básica |
+| Visualizaciones | Imágenes con predicciones y ground truth | `--samples N` |
+| Rendimiento por Clase | Gráficas detalladas por tipo de daño | `--analyze-classes` |
+| Matriz de Confusión | Análisis de confusiones entre clases | `--confusion-matrix` |
+| Benchmark | Medición de FPS y latencia | `--benchmark` |
+| Análisis de Errores | Ejemplos específicos de falsos positivos/negativos | `--analyze-errors` |
+| Comparativa | Gráficas comparativas entre modelos | `--compare-models` |
+| Informe Completo | Dashboard HTML con todas las métricas | `--full-report` |
+
+#### Integración con YOLO Detection
+
+Para integrar un modelo evaluado en el sistema principal YOLO Detection:
+
+1. Copie el modelo (`.pt`) a la carpeta `/models/` en la raíz del proyecto principal
+2. Actualice la configuración del modo 'Defects' para usar su modelo:
+   ```python
+   # En src/modes/defects/config.py
+   MODEL_WEIGHTS = "nombre_de_su_modelo.pt"  # El archivo en /models/
+   ```
+3. El sistema utilizará automáticamente `get_model_path()` para cargar su modelo
+
+#### Consejos para la Evaluación
+
+- Utilice `--full-report` para obtener un análisis completo en un solo paso
+- Verifique los falsos positivos más comunes para identificar áreas de mejora
+- Compare siempre el rendimiento entre validación y prueba para detectar overfitting
+- Para modelos destinados a dispositivos con recursos limitados, priorice el benchmark de velocidad
+- Los modelos con mAP50 > 0.85 son generalmente adecuados para implementación en producción
 
 ### 5. Flujo de trabajo completo
 
