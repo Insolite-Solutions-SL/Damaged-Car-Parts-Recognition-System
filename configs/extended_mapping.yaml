@@ -26,6 +26,11 @@ class_mapping:
   window_damage: damaged window
   windshield_damage: damaged wind shield
   
+  # Mapeos específicos para dataset chino
+  glass shatter: damaged window
+  lamp broken: damaged headlight
+  tire flat: damaged bumper
+  
   # Mapeos específicos para dataset extendido
   Bodypanel-Dent: dent
   Front-Windscreen-Damage: damaged wind shield
