@@ -670,7 +670,7 @@ def continue_training(model, data, continue_epochs=20, batch=16, imgsz=640, devi
     print(f"Ejecutando: {cmd_str}")
     
     try:
-        process = subprocess.run(cmd_str, shell=True, check=True)
+        subprocess.run(cmd_str, shell=True, check=True)
         
         # Verificar que el modelo se guardó correctamente
         new_model = f"./runs/detect/{name}/weights/best.pt"
@@ -819,7 +819,7 @@ def visualize_predictions(
         # Usar un directorio temporal para las predicciones
         with tempfile.TemporaryDirectory() as temp_dir:
             # Realizar predicciones usando la API
-            results = model.predict(
+            model.predict(
                 source=samples,
                 imgsz=image_size,
                 device=device,
@@ -977,7 +977,7 @@ def plot_metrics_comparison(metrics, output_dir=None):
     else:
         # Si no hay directorio, guardar en el directorio actual
         plt.savefig("metrics_comparison.png")
-        print(f"Gráfica comparativa guardada en el directorio actual: metrics_comparison.png")
+        print("Gráfica comparativa guardada como: metrics_comparison.png")
 
 def continue_training(model_path, data_path, epochs=20, batch_size=16, image_size=640, device='0'):
     """
@@ -1088,7 +1088,7 @@ def continue_training_shell(model_path, data_path, epochs=20, batch_size=16, ima
     print(f"Ejecutando: {cmd_str}")
     
     try:
-        process = subprocess.run(cmd_str, shell=True, check=True)
+        subprocess.run(cmd_str, shell=True, check=True)
         
         # Verificar que el modelo se guardó correctamente
         new_model = f"./runs/detect/{name}/weights/best.pt"
@@ -1333,7 +1333,9 @@ def analyze_false_detections(val_results, data_path, output_dir=None, max_sample
                "</head><body><h1>Análisis de Falsos Positivos</h1>"]
     
     fn_html = ["<html><head><title>Falsos Negativos</title>",
-               "<style>body{font-family:Arial;} img{max-width:500px;margin:10px;border:1px solid #ddd;}</style>",
+               "<style>",
+               "body{font-family:Arial;} img{max-width:500px;margin:10px;border:1px solid #ddd;}",
+               "</style>",
                "</head><body><h1>Análisis de Falsos Negativos</h1>"]
     
     # Procesar falsos positivos y negativos
@@ -1705,13 +1707,17 @@ def main():
             try:
                 model = YOLO(model_path)
                 
+                # Crear una versión del data.yaml con rutas absolutas para el análisis
+                absolute_data_path = get_absolute_data_yaml(data_path)
+                
                 # Cargar nombres de clases desde data.yaml
                 with open(data_path, 'r') as f:
                     data_yaml = yaml.safe_load(f)
                     class_names = data_yaml.get('names', [])
                 
-                # Obtener resultados de validación para análisis
-                last_val_results = model.val(data=data_path, batch=args.batch, imgsz=args.imgsz, device=args.device)
+                # Obtener resultados de validación para análisis usando rutas absolutas
+                print("\n=== Obteniendo datos para análisis avanzado ===")
+                last_val_results = model.val(data=absolute_data_path, batch=args.batch, imgsz=args.imgsz, device=args.device)
                 
                 # Analizar rendimiento por clase
                 if args.analyze_classes or args.full_report:
@@ -1729,6 +1735,14 @@ def main():
                 if args.analyze_errors or args.full_report:
                     print("\n=== ANÁLISIS DE ERRORES ===")
                     analyze_false_detections(last_val_results, data_path, output_dir=results_dir, max_samples=args.samples)
+                
+                # Limpiar archivo temporal
+                if absolute_data_path != data_path and os.path.exists(absolute_data_path):
+                    try:
+                        os.remove(absolute_data_path)
+                        print(f"Eliminado archivo temporal: {absolute_data_path}")
+                    except:
+                        pass
                 
             except Exception as e:
                 print(f"⚠️ Error en análisis avanzado: {e}")
