@@ -144,6 +144,38 @@ class_mapping:
   # ...otros mapeos
 ```
 
+### Combinación de Datasets
+
+El script `datasetProcessorTool.py` también permite combinar múltiples datasets en uno solo, lo que es especialmente útil para unificar datos de diferentes fuentes.
+
+#### Fusión de Datasets con datasetProcessorTool.py:
+
+```bash
+python datasetProcessorTool.py --merge-datasets --input-dirs dir1 dir2 dir3 --output-dir data_merged --use-remapping
+```
+
+Opciones para la fusión de datasets:
+- `--merge-datasets`: Activa el modo de fusión de datasets
+- `--input-dirs`: Lista de directorios con datasets a combinar (formato YOLO)
+- `--output-dir`: Directorio donde se guardará el dataset combinado
+- `--use-remapping`: Aplica remapeo de clases durante la fusión (recomendado)
+- `--train-ratio`, `--val-ratio`, `--test-ratio`: Proporciones para redistribuir las imágenes (por defecto: 0.7/0.2/0.1)
+
+Ejemplo de flujo de trabajo para combinar datasets:
+
+1. **Preparar cada dataset por separado**:
+   ```bash
+   python datasetProcessorTool.py --input-dir dataset1 --output-dir dataset1_processed --use-remapping
+   python datasetProcessorTool.py --input-dir dataset2 --output-dir dataset2_processed --use-remapping
+   ```
+
+2. **Combinar los datasets procesados**:
+   ```bash
+   python datasetProcessorTool.py --merge-datasets --input-dirs dataset1_processed dataset2_processed --output-dir data_merged
+   ```
+
+Este enfoque garantiza que todos los datasets tengan una estructura y nomenclatura de clases consistente antes de fusionarlos.
+
 ## Entrenamiento de Modelos
 
 Para entrenar un modelo con un dataset procesado:
