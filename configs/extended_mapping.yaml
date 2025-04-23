@@ -30,6 +30,12 @@ class_mapping:
   glass shatter: damaged window
   lamp broken: damaged headlight
   tire flat: damaged bumper
+  glass_shatter: damaged window
+  lamp_broken: damaged headlight
+  tire_flat: damaged bumper
+  glass-shatter: damaged window
+  lamp-broken: damaged headlight
+  tire-flat: damaged bumper
   
   # Mapeos específicos para dataset extendido
   Bodypanel-Dent: dent
