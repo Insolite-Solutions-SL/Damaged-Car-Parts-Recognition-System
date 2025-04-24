@@ -1,5 +1,6 @@
 # Archivos de datasets e imágenes
 data_*/
+results_*/
 
 # Directorios de entrenamiento y resultados
 runs/

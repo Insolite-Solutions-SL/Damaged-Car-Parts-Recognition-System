@@ -12,17 +12,42 @@ Este proyecto proporciona un entorno completo para el entrenamiento y evaluació
 - Análisis detallado de resultados con métricas y visualizaciones
 - Flujo de trabajo unificado para automatizar todo el proceso
 
-## Clases de daños soportadas
+## Datasets y proceso de unificación
 
-El sistema detecta 8 tipos de daños en vehículos:
-- damaged door (puerta dañada)
-- damaged window (ventana dañada)
-- damaged headlight (faro dañado)
-- damaged mirror (espejo dañado)
-- dent (abolladura)
-- damaged hood (capó dañado)
-- damaged bumper (parachoques dañado)
-- damaged wind shield (parabrisas dañado)
+Para mejorar la precisión del sistema, se han integrado tres datasets especializados en detección de daños en vehículos con un total de **10,959 imágenes**. Este proceso ha requerido un sofisticado sistema de remapeo que convierte más de 50 clases originales en un conjunto unificado de 8 categorías estándar.
+
+### Datasets originales
+
+| Dataset | Fuente | Imágenes | Clases originales |
+|---------|--------|----------|-------------------|
+| **Surya Remanan** | [GitHub](https://github.com/suryaremanan/Damaged-Car-parts-prediction-using-YOLOv8) | 400 | 8 clases: damaged door, damaged window, damaged headlight, damaged mirror, dent, damaged hood, damaged bumper, damaged windshield |
+| **RoboFlow** | [Car Damage Detection](https://universe.roboflow.com/capstone-nh0nc/car-damage-detection-t0g92) | 6,559 | 46 clases: Bodypanel-Dent, Front-Windscreen-Damage, door, headlight, back-bumper, front-bumper, bonnet-dent, etc. |
+| **CarDD USTC** | [CarDD-USTC](https://cardd-ustc.github.io/) | 4,000 | 6 clases: dent, scratch, crack, glass shatter, lamp broken, tire flat |
+
+**Distribución total**: Train (7,658 - 69.88%), Validation (2,222 - 20.28%), Test (1,079 - 9.84%)
+
+### Clases unificadas (target)
+
+Todas las clases originales han sido remapeadas a este conjunto unificado de 8 categorías:
+
+- **damaged door** (puerta dañada): Incluye door, damaged-door, collapse, etc.
+- **damaged window** (ventana dañada): Incluye window, damaged-window, glass shatter, shattered_glass, crack, etc.
+- **damaged headlight** (faro dañado): Incluye headlight, Headlight-Damage, damaged-head-light, lamp broken, light_damage, etc.
+- **damaged mirror** (espejo dañado): Incluye mirror, Sidemirror-Damage, mirror_damage, etc.
+- **dent** (abolladura): Incluye dent, Bodypanel-Dent, scratch, depression, bonnet-dent, etc.
+- **damaged hood** (capó dañado): Incluye hood, damaged-hood, hood_damage, trunk, etc.
+- **damaged bumper** (parachoques dañado): Incluye back-bumper, front-bumper, bumper_damage, tire flat, etc.
+- **damaged wind shield** (parabrisas dañado): Incluye damaged-windscreen, Front-Windscreen-Damage, windshield_damage, etc.
+
+### Proceso de unificación
+
+El sistema utiliza un mapa de equivalencias detallado en `configs/extended_mapping.yaml` que:
+
+1. **Estandariza nomenclaturas** entre datasets
+2. **Gestiona variaciones de formato** (guiones, guiones bajos, espacios)
+3. **Preserva la semántica** agrupando daños similares
+
+Este enfoque multiplica por 27 veces la cantidad de ejemplos disponibles (de 400 a 10,959), manteniendo una consistencia en la distribución train/validation/test (~70/20/10) para crear un modelo más robusto y generalizable.
 
 ## Estructura del proyecto
 
@@ -178,31 +203,96 @@ Este enfoque garantiza que todos los datasets tengan una estructura y nomenclatu
 
 ## Entrenamiento de Modelos
 
-Para entrenar un modelo con un dataset procesado:
+Para entrenar un modelo YOLOv11 con el dataset procesado, use el script `trainYolov11s.py`:
 
 ```bash
-python trainModel.py --data data_merged/data.yaml --model yolov11-s.pt --epochs 100 --batch-size 16
+python3 trainYolov11s.py --data $(pwd)/data_combined/data.yaml --epochs 100 --batch 16 --device 0
 ```
 
-Opciones principales:
+Este script utiliza la CLI de Ultralytics YOLOv11 para entrenar y evaluar automáticamente el modelo. Al finalizar el entrenamiento, también realiza una validación y genera gráficos de rendimiento.
+
+### Opciones de entrenamiento:
+
 - `--data`: Ruta al archivo data.yaml del dataset procesado
-- `--model`: Modelo base a utilizar (s, m, l, x)
-- `--epochs`: Número de épocas de entrenamiento
-- `--batch-size`: Tamaño del batch
+- `--model`: Modelo base a utilizar (por defecto: yolo11s). Opciones: yolo11n, yolo11s, yolo11m, yolo11l, yolo11x
+- `--epochs`: Número de épocas para el entrenamiento (predeterminado: 100)
+- `--batch`: Tamaño del lote de entrenamiento (predeterminado: 16)
+- `--imgsz`: Tamaño de imagen para entrenamiento (predeterminado: 640)
+- `--device`: Dispositivo para entrenamiento (0 para GPU, cpu para CPU)
+- `--workers`: Número de procesos para carga de datos (predeterminado: 8)
+- `--name`: Nombre del experimento (por defecto se genera automáticamente)
+- `--project`: Directorio para guardar los resultados (predeterminado: runs/detect)
+
+### Ejemplos prácticos:
+
+```bash
+# Entrenamiento básico con GPU
+python3 trainYolov11s.py --data $(pwd)/data_combined/data.yaml --epochs 100 --batch 16 --device 0
+
+# Entrenamiento con el modelo más ligero
+python3 trainYolov11s.py --data $(pwd)/data_combined/data.yaml --model yolo11n --batch 32
+
+# Entrenamiento con mayor resolución de imagen
+python3 trainYolov11s.py --data $(pwd)/data_combined/data.yaml --imgsz 800 --batch 8
+
+# Entrenamiento en CPU (más lento)
+python3 trainYolov11s.py --data $(pwd)/data_combined/data.yaml --device cpu
+```
+
+Los resultados del entrenamiento, incluyendo el mejor modelo, las gráficas de pérdida y las métricas de evaluación, se guardarán en la carpeta especificada por `--project` y `--name`.
 
 ## Evaluación de Modelos
 
-Para evaluar un modelo entrenado:
+La herramienta `evaluateModel.py` permite realizar análisis detallados de los modelos entrenados, ofreciendo múltiples opciones para evaluación, visualización y optimización:
 
 ```bash
 python evaluateModel.py --model runs/train/exp/weights/best.pt --data data_merged/data.yaml
 ```
 
-Para generar un reporte completo con análisis por clase y matriz de confusión:
+### Opciones de evaluación
+
+| Opción | Descripción |
+|--------|-------------|
+| `--model PATH` | Ruta al modelo a evaluar |
+| `--data PATH` | Ruta al archivo data.yaml o directorio que lo contiene |
+| `--batch INT` | Tamaño del batch (default: 16) |
+| `--imgsz INT` | Tamaño de la imagen (default: 640) |
+| `--device STR` | Dispositivo (0, 0,1, cpu) (default: 0) |
+| `--samples INT` | Número de muestras para visualización (default: 10) |
+| `--list-models` | Listar todos los modelos disponibles |
+| `--continue-epochs INT` | Continuar entrenamiento por N épocas adicionales |
+| `--benchmark` | Realizar benchmark de velocidad del modelo |
+| `--analyze-classes` | Analizar rendimiento por clase |
+| `--confusion-matrix` | Generar matriz de confusión |
+| `--analyze-errors` | Analizar falsos positivos/negativos |
+| `--compare-models MODEL1 [MODEL2 ...]` | Comparar varios modelos (proporcionar múltiples rutas) |
+| `--export {onnx,torchscript,openvino}` | Exportar modelo a formato optimizado |
+| `--export-dir PATH` | Directorio para modelos exportados (default: ./exported_models) |
+| `--full-report` | Generar informe completo con todas las métricas |
+
+### Ejemplos de uso
 
 ```bash
+# Evaluación básica del modelo
+python evaluateModel.py --model runs/train/exp/weights/best.pt --data data_merged/data.yaml
+
+# Generar informe completo con todas las métricas y visualizaciones
 python evaluateModel.py --model runs/train/exp/weights/best.pt --data data_merged/data.yaml --full-report
+
+# Benchmark de velocidad del modelo
+python evaluateModel.py --model runs/train/exp/weights/best.pt --benchmark
+
+# Análisis de rendimiento por clase
+python evaluateModel.py --model runs/train/exp/weights/best.pt --analyze-classes
+
+# Comparar múltiples modelos entrenados
+python evaluateModel.py --compare-models runs/train/exp1/weights/best.pt runs/train/exp2/weights/best.pt --data data_merged/data.yaml
+
+# Exportar modelo a formato ONNX
+python evaluateModel.py --model runs/train/exp/weights/best.pt --export onnx
 ```
+
+> **Nota**: La funcionalidad de análisis por clase (`--analyze-classes`) está actualmente en desarrollo y puede no proporcionar resultados precisos para todos los modelos. Se recomienda usar esta opción con precaución y verificar los resultados manualmente.
 
 ### Consejos para la evaluación
 
