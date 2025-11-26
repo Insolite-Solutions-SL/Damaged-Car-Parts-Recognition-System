@@ -1,0 +1,37 @@
+multi_scale: true         # Entrenamiento multiescala
+cos_lr: true              # Scheduler coseno para la tasa de aprendizaje
+close_mosaic: 0           # Últimas N épocas sin mosaico
+resume: false              # Reanudar entrenamiento desde el checkpoint
+amp: true                  # Automatic Mixed Precision (AMP)
+fraction: 1.0              # Fracción del dataset a usar
+profile: false             # Perfilado de ONNX/TensorRT
+freeze: null               # Capas a congelar
+lr0: 0.00001                  # Learning rate inicial
+lrf: 0.01                  # Learning rate final
+momentum: 0.937            # Momento
+weight_decay: 0.0005       # Decaimiento de pesos (L2 regularization)
+warmup_epochs: 3.0         # Épocas de calentamiento
+warmup_momentum: 0.8       # Momento durante el calentamiento
+warmup_bias_lr: 0.1        # LR de sesgo en el calentamiento
+box: 0.05                   # Pérdida de la caja
+cls: 0.5                   # Pérdida de clasificación
+dfl: 1.5                   # Pérdida DFL
+pose: 12.0                 # Pérdida de pose
+kobj: 2.0                  # Pérdida de keypoint objectness
+nbs: 64                    # Batch size nominal para normalización de pérdida
+overlap_mask: true         # Máscaras solapadas
+mask_ratio: 4              # Ratio de reducción de máscara
+dropout: 0.3               # Tasa de abandono (dropout)
+
+# Augmentations
+hsv_h: 0.015     # Hue augmentation (color)
+hsv_s: 0.7       # Saturation augmentation
+hsv_v: 0.4       # Value (brightness) augmentation
+degrees: 5.0     # Rotation (+/- deg)
+translate: 0.1   # Translation (+/- fraction)
+scale: 0.5       # Scale (+/- gain)
+shear: 5.0       # Shear (+/- deg)
+perspective: 0.0 # Perspective (+/- fraction), range 0-0.001
+flipud: 0.0      # Flip up-down probability
+fliplr: 0.5      # Flip left-right probability
+mosaic: 1      # Mosaic augmentation probability
